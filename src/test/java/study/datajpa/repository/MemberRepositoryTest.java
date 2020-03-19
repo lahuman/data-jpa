@@ -4,10 +4,8 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.core.AutoConfigureCache;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageRequest;
-import org.springframework.data.domain.Slice;
-import org.springframework.data.domain.Sort;
+import org.springframework.data.domain.*;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.test.annotation.Rollback;
 import study.datajpa.dto.MemberDto;
 import study.datajpa.entity.Member;
@@ -346,5 +344,53 @@ class MemberRepositoryTest {
         member.setAge(11);
         memberRepository.save(member);
         assertThat(member.getAge()).isEqualTo(11);
+    }
+
+    @Test
+    public void spec() throws InterruptedException {
+        // given
+        Team t = new Team("teamA");
+        em.persist(t);
+
+        Member m = new Member("name1", 10, t);
+        Member m2 = new Member("name2", 10, t);
+        em.persist(m);
+        em.persist(m2);
+
+        em.flush();
+        em.clear();
+
+        // when
+        Specification<Member> spec = MemberSpec.username("name1").and(MemberSpec.teamName("teamA"));
+        List<Member> result = memberRepository.findAll(spec);
+        assertThat(result.size()).isEqualTo(1);
+    }
+
+    @Test
+    public void queryByExample() {
+        // given
+        Team t = new Team("teamA");
+        em.persist(t);
+
+        Member m = new Member("name1", 10, t);
+        Member m2 = new Member("name2", 10, t);
+        em.persist(m);
+        em.persist(m2);
+
+        em.flush();
+        em.clear();
+
+        // when
+        // Probe
+        Member cm = new Member("name1");
+        Team team = new Team("teamA");
+        cm.setTeam(team);
+        ExampleMatcher matcher = ExampleMatcher.matching().withIgnorePaths("age");
+
+        Example<Member> example = Example.of(cm, matcher);
+
+        List<Member> result = memberRepository.findAll(example);
+
+        assertThat(result.get(0).getUsername()).isEqualTo("name1");
     }
 }
