@@ -311,18 +311,40 @@ class MemberRepositoryTest {
     public void auditBaseEntity() throws InterruptedException {
         Member m = new Member("name", 10);
         memberRepository.save(m);
+        em.flush();
+        em.clear();
 
         Thread.sleep(1000);
         m.setAge((11));
 
+
+//        memberRepository.save(m);
         em.flush();
         em.clear();
-
         System.out.println("member create date = " + m.getCreatedDate());
         System.out.println("member create by = " + m.getCreatedBy());
         System.out.println("member update date = " + m.getLastModifiedDate());
         System.out.println("member update by = " + m.getLastModifiedBy());
-        List<Member> result = memberRepository.findMemberCustom();
+        List<Member> result = memberRepository.findByUsername("name");
+        for(Member rm : result){
+            System.out.println("Member info = "+rm.toString());
+            System.out.println("Member age = "+rm.getAge());
+        }
         assertThat(result.size()).isEqualTo(1);
+    }
+
+    @Test
+    public void how2CallUpdate() throws InterruptedException {
+        Member m = new Member("name", 10);
+        memberRepository.save(m);
+        em.flush();
+        em.clear();
+
+        Thread.sleep(1000);
+
+        Member member = memberRepository.getOne(m.getId());
+        member.setAge(11);
+        memberRepository.save(member);
+        assertThat(member.getAge()).isEqualTo(11);
     }
 }
