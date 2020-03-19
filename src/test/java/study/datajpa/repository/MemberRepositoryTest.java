@@ -4,11 +4,17 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.core.AutoConfigureCache;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Slice;
+import org.springframework.data.domain.Sort;
 import org.springframework.test.annotation.Rollback;
 import study.datajpa.dto.MemberDto;
 import study.datajpa.entity.Member;
 import study.datajpa.entity.Team;
 
+import javax.persistence.EntityManager;
+import javax.persistence.PersistenceContext;
 import javax.transaction.Transactional;
 
 import java.util.Arrays;
@@ -25,6 +31,9 @@ class MemberRepositoryTest {
 
     @Autowired MemberRepository memberRepository;
     @Autowired TeamRepository teamRepository;
+    @PersistenceContext
+    EntityManager em;
+
 
     @Test
     public void testMember() {
@@ -157,9 +166,6 @@ class MemberRepositoryTest {
         Member m1 = new Member("AAA", 10);
         Member m2 = new Member("BBB", 20);
 
-        memberRepository.save(m1);
-        memberRepository.save(m2);
-
         List<Member> result1 = memberRepository.findListByUsername("AAA");
         Member result2 = memberRepository.findMemberByUsername("AAA");
         Optional<Member> result3 =  memberRepository.findOptionalByUsername("AAA");
@@ -168,5 +174,155 @@ class MemberRepositoryTest {
         System.out.println(result2);
         System.out.println(result3);
 
+    }
+
+    @Test
+    public void testPage() {
+        memberRepository.save(new Member("AAA", 10));
+        memberRepository.save(new Member("BBB", 10));
+        memberRepository.save(new Member("BBB", 10));
+        memberRepository.save(new Member("BBB", 10));
+        memberRepository.save(new Member("BBB", 10));
+
+        int age = 10;
+        PageRequest pageRequest = PageRequest.of(0, 3, Sort.by(Sort.DEFAULT_DIRECTION.DESC, "username"));
+
+        //when
+        Page<Member> page = memberRepository.findPageByAge(age, pageRequest);
+//        Slice<Member> page = memberRepository.findSliceByAge(age, pageRequest);
+
+        Page<MemberDto> toMap = page.map(member -> new MemberDto(member.getId(), member.getUsername(), null));
+
+        //then
+        List<Member> content = page.getContent();
+
+        assertThat(content.size()).isEqualTo(3);
+        assertThat(page.getTotalElements()).isEqualTo(5);
+        assertThat(page.getNumber()).isEqualTo(0);
+        assertThat(page.getTotalPages()).isEqualTo(2);
+        assertThat(page.isFirst()).isTrue();
+        assertThat(page.hasNext()).isTrue();
+
+    }
+
+    @Test
+    public void bulkUpdate() {
+        memberRepository.save(new Member("AAA", 10));
+        memberRepository.save(new Member("BBB", 10));
+        memberRepository.save(new Member("BBB", 20));
+        memberRepository.save(new Member("BBB", 30));
+        memberRepository.save(new Member("BBB1", 40));
+
+        int resultCount = memberRepository.bulkUpdate(10);
+        assertThat(resultCount).isEqualTo(5);
+
+        em.flush();
+        em.clear();
+
+        Member m = memberRepository.findMemberByUsername("BBB1");
+        assertThat(m.getAge()).isEqualTo(41);
+    }
+
+    @Test
+    public void findMemberLazy() {
+        //given
+        // member1 -> teamA
+        // member2 -> teamB
+        Team teamA = new Team("TeamA");
+        Team teamB = new Team("TeamB");
+        teamRepository.save(teamA);
+        teamRepository.save(teamB);
+        memberRepository.save(new Member("member1", 10, teamA));
+        memberRepository.save(new Member("member2", 10, teamB));
+
+        em.flush();
+        em.clear();
+
+        //when N + 1
+        //select Member 1
+//        List<Member> members = memberRepository.findMemberFetchJoin();
+//        List<Member> members = memberRepository.findAll();
+        List<Member> members = memberRepository.findMemberEntityGraphByUsername("member1");
+
+        for (Member m : members){
+            System.out.println("member = " + m);
+            System.out.println("member.team class = " + m.getTeam().getClass());
+            System.out.println("member.team name=" + m.getTeam().getName());
+        }
+    }
+
+    @Test
+    public void queryHint() {
+        Member m = new Member("name", 10);
+        memberRepository.save(m);
+
+        em.flush();
+        em.clear();
+
+        Member findMember = memberRepository.findReadOnlyByUsername("name");
+        findMember.setAge(11);
+
+        em.flush();
+        em.clear();
+    }
+
+    @Test
+    public void lock() {
+        Member m = new Member("name", 10);
+        memberRepository.save(m);
+
+        em.flush();
+        em.clear();
+
+        List<Member> findMember = memberRepository.findLocalByUsername("name");
+
+        em.flush();
+        em.clear();
+    }
+
+    @Test
+    public void customRepository() {
+        Member m = new Member("name", 10);
+        memberRepository.save(m);
+
+        List<Member> result = memberRepository.findMemberCustom();
+        assertThat(result.size()).isEqualTo(1);
+    }
+
+
+    @Test
+    public void jpaEventBaseEntity() throws InterruptedException {
+        Team m = new Team("name");
+        teamRepository.save(m); //@PrePersist
+
+        Thread.sleep(1000);
+        m.setName("abc");
+
+        em.flush();
+        em.clear();
+
+        System.out.println("member create date = " + m.getCreatedDate());
+        System.out.println("member update date = " + m.getLastModifiedDate());
+        List<Team> result = teamRepository.findAll();
+        assertThat(result.size()).isEqualTo(1);
+    }
+
+    @Test
+    public void auditBaseEntity() throws InterruptedException {
+        Member m = new Member("name", 10);
+        memberRepository.save(m);
+
+        Thread.sleep(1000);
+        m.setAge((11));
+
+        em.flush();
+        em.clear();
+
+        System.out.println("member create date = " + m.getCreatedDate());
+        System.out.println("member create by = " + m.getCreatedBy());
+        System.out.println("member update date = " + m.getLastModifiedDate());
+        System.out.println("member update by = " + m.getLastModifiedBy());
+        List<Member> result = memberRepository.findMemberCustom();
+        assertThat(result.size()).isEqualTo(1);
     }
 }
