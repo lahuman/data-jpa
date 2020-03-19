@@ -8,6 +8,7 @@ import org.springframework.data.domain.*;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.test.annotation.Rollback;
 import study.datajpa.dto.MemberDto;
+import study.datajpa.dto.UsernameOnlyDto;
 import study.datajpa.entity.Member;
 import study.datajpa.entity.Team;
 
@@ -392,5 +393,42 @@ class MemberRepositoryTest {
         List<Member> result = memberRepository.findAll(example);
 
         assertThat(result.get(0).getUsername()).isEqualTo("name1");
+    }
+
+
+
+    @Test
+    public void projectionExample() {
+        // given
+        Team t = new Team("teamA");
+        em.persist(t);
+
+        Member m = new Member("name1", 10, t);
+        Member m2 = new Member("name2", 10, t);
+        em.persist(m);
+        em.persist(m2);
+
+        em.flush();
+        em.clear();
+
+        List<UsernameOnly> result = memberRepository.findProjectionsByUsername("name1");
+        for(UsernameOnly o : result){
+            System.out.println(o.getUsername());
+        }
+
+        List<UsernameOnlyDto> r2 = memberRepository.findProjections2ByUsername("name1");
+        for(UsernameOnlyDto o : r2){
+            System.out.println(o.getUsername());
+        }
+
+        List<UsernameOnlyDto> r3 = memberRepository.findProjections3ByUsername("name1", UsernameOnlyDto.class);
+        for(UsernameOnlyDto o : r3){
+            System.out.println(o.getUsername());
+        }
+        List<NestedClosedProjections> r4 = memberRepository.findProjections3ByUsername("name1", NestedClosedProjections.class);
+        for(NestedClosedProjections o : r4){
+            System.out.println(o.getUsername());
+            System.out.println(o.getTeam().getName());
+        }
     }
 }
